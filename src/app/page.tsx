@@ -347,8 +347,8 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-white flex flex-col">
       {/* Barra de progreso fija */}
-      <div className="fixed top-0 left-0 right-0 z-10 bg-white pt-safe pb-3">
-        <div className="max-w-xl md:max-w-2xl mx-auto px-6">
+      <div className="fixed top-0 left-0 right-0 z-10 bg-white pt-6 pb-3">
+        <div className="max-w-xl mx-auto px-6">
           <div className="flex gap-1">
             {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
               <div
@@ -366,7 +366,7 @@ export default function Page() {
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 max-w-xl md:max-w-2xl mx-auto w-full px-6 md:px-8 pt-20 pb-36">
+      <div className="flex-1 max-w-xl mx-auto w-full px-6 pt-20 pb-32">
         {step === 0 && <StepIntro form={form} set={set} />}
         {step === 1 && <StepBlock1 form={form} set={set} />}
         {step === 2 && <StepBlock2 form={form} set={set} />}
@@ -377,11 +377,11 @@ export default function Page() {
 
       {/* Navegación fija abajo */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100">
-        <div className="max-w-xl md:max-w-2xl mx-auto px-6 md:px-8 pt-4 pb-safe flex items-center justify-between">
+        <div className="max-w-xl mx-auto px-6 pt-5 flex items-center justify-between nav-safe">
           <button
             onClick={handlePrev}
             disabled={step === 0}
-            className="min-h-[44px] text-sm text-neutral-400 hover:text-neutral-700 transition-colors disabled:opacity-0 disabled:pointer-events-none px-2"
+            className="text-sm text-neutral-400 hover:text-neutral-700 transition-colors disabled:opacity-0 disabled:pointer-events-none"
           >
             ← Anterior
           </button>
@@ -390,7 +390,7 @@ export default function Page() {
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="min-h-[44px] text-sm px-7 py-3 bg-neutral-900 text-white rounded-full hover:bg-neutral-700 transition-colors disabled:opacity-40"
+              className="text-sm px-7 py-2.5 bg-neutral-900 text-white rounded-full hover:bg-neutral-700 transition-colors disabled:opacity-40"
             >
               {submitting ? 'Enviando...' : 'Enviar respuestas'}
             </button>
@@ -398,7 +398,7 @@ export default function Page() {
             <button
               onClick={handleNext}
               disabled={!canContinue()}
-              className="min-h-[44px] text-sm px-7 py-3 bg-neutral-900 text-white rounded-full hover:bg-neutral-700 transition-colors disabled:opacity-30"
+              className="text-sm px-7 py-2.5 bg-neutral-900 text-white rounded-full hover:bg-neutral-700 transition-colors disabled:opacity-30"
             >
               Continuar →
             </button>

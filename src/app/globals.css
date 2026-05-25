@@ -18,11 +18,7 @@ textarea {
   background: #e5e5e5;
 }
 
-/* Safe area support para iOS notch / home bar */
-.pb-safe {
+/* iOS Safari safe area para el nav fijo */
+.nav-safe {
   padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
-}
-
-.pt-safe {
-  padding-top: max(1.5rem, env(safe-area-inset-top));
 }
