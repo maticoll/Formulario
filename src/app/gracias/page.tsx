@@ -2,8 +2,8 @@ import Link from 'next/link'
 
 export default function Gracias() {
   return (
-    <main className="min-h-screen bg-white flex items-center justify-center px-6">
-      <div className="max-w-md w-full">
+    <main className="min-h-screen bg-white flex items-center justify-center px-6 md:px-8">
+      <div className="max-w-md md:max-w-xl w-full">
         <p className="text-xs uppercase tracking-widest text-neutral-400 mb-6">
           Investigación vocacional · Uruguay
         </p>
