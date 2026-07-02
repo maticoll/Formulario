@@ -338,7 +338,7 @@ export default function Explorar() {
       <div className="mx-auto w-full max-w-xl px-5 py-6 pb-24">
         <button onClick={() => go('landing')} className="flex items-center gap-2 font-extrabold tracking-tight text-slate-900">
           <span className="h-3 w-3 rounded-full bg-orange-400 ring-4 ring-orange-100" />
-          Posta
+          Rumbo
           <span className="ml-1 text-xs font-medium text-slate-400">lo que ningún folleto te cuenta</span>
         </button>
 
