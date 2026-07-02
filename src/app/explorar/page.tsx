@@ -422,7 +422,9 @@ export default function Explorar() {
               onSubmit={submitFinal}
             />
           )}
-          {step === 'done' && <Done name={name} />}
+          {/* Reload completo: resetea todo el estado y crea sesión nueva en la
+              próxima corrida (clave si varios chicos comparten el dispositivo). */}
+          {step === 'done' && <Done name={name} onHome={() => { window.location.href = '/explorar' }} />}
         </div>
       </div>
     </main>
@@ -797,7 +799,7 @@ function FinalSurvey({ careers, useful, setUseful, leaning, setLeaning, onBack, 
   )
 }
 
-function Done({ name }: { name: string }) {
+function Done({ name, onHome }: { name: string; onHome: () => void }) {
   return (
     <div className="py-10 text-center">
       <div className="text-5xl">🎉</div>
@@ -813,6 +815,9 @@ function Done({ name }: { name: string }) {
           Este test es una brújula para explorar, no un veredicto. Lo armamos para validar una hipótesis de un proyecto de la facultad — la decisión sigue siendo 100% tuya.
         </p>
       </div>
+      <button onClick={onHome} className="mt-8 inline-flex items-center gap-2 rounded-full bg-violet-600 px-8 py-3.5 font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700">
+        ← Volver al inicio
+      </button>
     </div>
   )
 }
