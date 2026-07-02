@@ -2,7 +2,9 @@
 // Test vocacional corto basado en el modelo RIASEC de Holland
 // (Realista, Investigador, Artístico, Social, Emprendedor, Convencional).
 // Es el marco del Test de Holland; los ítems siguen el estilo "¿cuánto te
-// gustaría esta actividad?" de los inventarios de Kuder y Belarmino.
+// gustaría esta actividad?" de los inventarios de Kuder y Belarmino, pero
+// elegidos para que sean concretos y "polarizantes" (que gusten mucho a un
+// perfil y poco a otros) → discriminan mejor que actividades genéricas.
 // 12 ítems (2 por tipo) → perfil RIASEC → área → carreras.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -23,14 +25,20 @@ export const RIASEC_LABELS: Record<RiasecType, { name: string; emoji: string; bl
 
 export type TestItem = { activity: string; type: RiasecType }
 
-// 6 ítems: uno por tipo RIASEC. Versión express ( mínima fricción ).
+// 12 ítems (2 por tipo), intercalados y bien concretos para que discriminen.
 export const TEST: TestItem[] = [
-  { activity: 'Investigar por qué pasan las cosas y resolver un problema difícil paso a paso.', type: 'I' },
-  { activity: 'Liderar un proyecto, convencer a otros o armar un emprendimiento.', type: 'E' },
-  { activity: 'Crear algo tuyo: escribir, diseñar, hacer música o editar videos.', type: 'A' },
-  { activity: 'Ayudar, escuchar o enseñarle algo a alguien que lo necesita.', type: 'S' },
-  { activity: 'Ordenar información, llevar cuentas y trabajar con datos precisos.', type: 'C' },
-  { activity: 'Arreglar o armar algo con tus manos, o trabajar con máquinas y herramientas.', type: 'R' },
+  { activity: 'Quedarte enganchado horas hasta encontrarle la vuelta a un problema difícil.', type: 'I' },
+  { activity: 'Convencer a un grupo de sumarse a una idea tuya y ponerte al frente.', type: 'E' },
+  { activity: 'Diseñar, editar un video o componer algo con tu propio estilo, sin reglas.', type: 'A' },
+  { activity: 'Explicarle un tema a alguien con paciencia hasta que le caiga la ficha.', type: 'S' },
+  { activity: 'Ordenar un montón de datos desprolijos en una planilla clara y prolija.', type: 'C' },
+  { activity: 'Desarmar un aparato para ver cómo funciona por dentro y volver a armarlo.', type: 'R' },
+  { activity: 'Leer sobre cómo funciona el cuerpo humano, el universo o un fenómeno raro.', type: 'I' },
+  { activity: 'Armar un pequeño negocio o revender algo para generar tu propia plata.', type: 'E' },
+  { activity: 'Escribir una historia, dibujar o sacar fotos para expresar una idea.', type: 'A' },
+  { activity: 'Bancar y darle una mano a alguien que la está pasando mal.', type: 'S' },
+  { activity: 'Llevar las cuentas de algo y que cada número cierre perfecto.', type: 'C' },
+  { activity: 'Pasar la tarde arreglando o construyendo algo con herramientas.', type: 'R' },
 ]
 
 export const SCALE: { label: string; emoji: string; value: number }[] = [
@@ -55,15 +63,22 @@ export function computeProfile(scores: number[]): Profile {
     riasec[item.type] += scores[i] ?? 0
   })
 
+  // Scoring IPSATIVO: cada área se mide por cuánto SOBRESALE cada tipo respecto
+  // del promedio de la propia persona. Así el resultado depende de tus intereses
+  // relativos y no de si respondés todo alto o todo bajo. Además cada área pesa
+  // lo mismo (promedio de 2 tipos), para que no haya una que gane "de fábrica".
+  const mean = RIASEC_TYPES.reduce((sum, t) => sum + riasec[t], 0) / RIASEC_TYPES.length
+  const dev = (t: RiasecType) => riasec[t] - mean
+
   const areaScores: Record<AreaKey, number> = {
-    tecnologia: riasec.I + 0.5 * riasec.R,
-    negocios: riasec.E + 0.8 * riasec.C,
-    comunicacion: riasec.A + 0.4 * riasec.E,
-    salud: riasec.S + 0.5 * riasec.I,
+    tecnologia: (dev('I') + dev('R')) / 2,
+    negocios: (dev('E') + dev('C')) / 2,
+    comunicacion: (dev('A') + dev('E')) / 2,
+    salud: (dev('S') + dev('I')) / 2,
   }
 
-  let area: AreaKey = 'negocios'
-  let max = -1
+  let area: AreaKey = 'tecnologia'
+  let max = -Infinity
   for (const a of AREA_ORDER) {
     if (areaScores[a] > max) {
       max = areaScores[a]
