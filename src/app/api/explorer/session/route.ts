@@ -31,6 +31,9 @@ export async function PATCH(req: NextRequest) {
     if (!body.id) return NextResponse.json({ error: 'Falta id de sesión' }, { status: 400 })
 
     const patch: Record<string, unknown> = { updatedAt: new Date() }
+    if (body.name !== undefined)
+      patch.name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : null
+    if (body.preAnswers !== undefined) patch.preAnswers = body.preAnswers
     if (body.profileArea !== undefined) patch.profileArea = body.profileArea
     if (body.suggestedCareers !== undefined) patch.suggestedCareers = body.suggestedCareers
     if (body.usefulRating !== undefined) patch.usefulRating = body.usefulRating

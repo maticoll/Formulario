@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DIGEST_QUESTIONS } from '@/lib/digests'
+import { TEST, SCALE, RIASEC_LABELS, computeProfile, type RiasecType } from '@/lib/riasec'
 
 // ─── Tipos de datos que vienen de la API ─────────────────────────────────────
 type AreaKey = 'tecnologia' | 'negocios' | 'comunicacion' | 'salud'
@@ -17,7 +18,8 @@ type AreasMap = Record<AreaKey, { name: string; emoji: string; careers: string[]
 type CareersResponse = { areas: AreasMap; careers: CareerListItem[] }
 type Group = { label: string; text: string }
 type Block = { qi: number; groups: Group[] }
-type Testimonial = { stage: string; items: { label: string; a: string }[] }
+type TestimonialItem = { k?: string; label: string; a: string }
+type Testimonial = { stage: string; items: TestimonialItem[] }
 type CareerDetail = {
   key: string
   name: string
@@ -28,66 +30,12 @@ type CareerDetail = {
   testimonials: Testimonial[]
 }
 
-// ─── Contenido estático ──────────────────────────────────────────────────────
+// ─── Preguntas abiertas iniciales ────────────────────────────────────────────
 const OPEN_QUESTIONS = [
   '¿Ya pensaste en qué querés hacer cuando termines el liceo? Contá lo que tengas, aunque sea difuso.',
   '¿Consideraste alguna carrera en particular? ¿Cuál (o cuáles)?',
   '¿Qué es lo que más te importa a la hora de elegir? (que te guste, la plata, la salida laboral, ayudar a otros...)',
 ]
-
-type TestOpt = { em: string; t: string; a: AreaKey }
-const TEST: { q: string; opts: TestOpt[] }[] = [
-  { q: 'Elegí el plan que más te tienta:', opts: [
-    { em: '💻', t: 'Entender cómo funciona una app o una máquina por dentro', a: 'tecnologia' },
-    { em: '📈', t: 'Montar un emprendimiento y hacerlo crecer', a: 'negocios' },
-    { em: '🎬', t: 'Crear contenido que la gente quiera compartir', a: 'comunicacion' },
-    { em: '🩺', t: 'Estar en contacto con gente y ayudarla', a: 'salud' },
-  ]},
-  { q: '¿Qué te da más satisfacción?', opts: [
-    { em: '🧩', t: 'Resolver un problema difícil, paso a paso', a: 'tecnologia' },
-    { em: '🤝', t: 'Cerrar un buen trato o negociar algo', a: 'negocios' },
-    { em: '✨', t: 'Que algo que hiciste emocione o convenza a alguien', a: 'comunicacion' },
-    { em: '💚', t: 'Ver que alguien está mejor gracias a vos', a: 'salud' },
-  ]},
-  { q: 'En el liceo, lo que más disfrutás es…', opts: [
-    { em: '🔢', t: 'Los números, la lógica, resolver', a: 'tecnologia' },
-    { em: '🗂️', t: 'Los proyectos donde hay que organizar y decidir', a: 'negocios' },
-    { em: '✍️', t: 'Escribir, debatir, presentar', a: 'comunicacion' },
-    { em: '🧬', t: 'Biología y entender cómo funciona la gente', a: 'salud' },
-  ]},
-  { q: 'Si tuvieras que laburar 8 horas, preferirías…', opts: [
-    { em: '⌨️', t: 'Frente a una compu construyendo algo', a: 'tecnologia' },
-    { em: '📊', t: 'En reuniones, planificando y moviendo el negocio', a: 'negocios' },
-    { em: '🎨', t: 'Produciendo ideas, campañas y contenido', a: 'comunicacion' },
-    { em: '🫂', t: 'Con personas, cara a cara', a: 'salud' },
-  ]},
-  { q: 'Te sentís más orgulloso cuando…', opts: [
-    { em: '✅', t: 'Algo que armaste funciona sin errores', a: 'tecnologia' },
-    { em: '💰', t: 'Un proyecto tuyo da resultados o plata', a: 'negocios' },
-    { em: '📣', t: 'Tu mensaje llegó y la gente reaccionó', a: 'comunicacion' },
-    { em: '🌱', t: 'Ayudaste a alguien a estar mejor', a: 'salud' },
-  ]},
-  { q: '¿Qué elogio te gusta más recibir?', opts: [
-    { em: '🧠', t: '“Sos un genio resolviendo esto”', a: 'tecnologia' },
-    { em: '💡', t: '“Tenés cabeza para los negocios”', a: 'negocios' },
-    { em: '🎙️', t: '“Te expresás increíble”', a: 'comunicacion' },
-    { em: '❤️', t: '“Se nota que te importa la gente”', a: 'salud' },
-  ]},
-  { q: 'Un problema del mundo que te gustaría atacar:', opts: [
-    { em: '🤖', t: 'Hacer la tecnología más útil y accesible', a: 'tecnologia' },
-    { em: '🏢', t: 'Crear empresas y generar trabajo', a: 'negocios' },
-    { em: '📰', t: 'Mejorar cómo se comunica la información', a: 'comunicacion' },
-    { em: '🏥', t: 'Cuidar la salud y el bienestar de las personas', a: 'salud' },
-  ]},
-  { q: '¿Con qué frase te identificás más?', opts: [
-    { em: '🔧', t: '“Me encanta armar y desarmar cosas para entenderlas”', a: 'tecnologia' },
-    { em: '🚀', t: '“Siempre estoy pensando en la próxima oportunidad”', a: 'negocios' },
-    { em: '💬', t: '“Tengo mil ideas y quiero contarlas”', a: 'comunicacion' },
-    { em: '🤗', t: '“Me gusta acompañar y cuidar a los demás”', a: 'salud' },
-  ]},
-]
-
-const AREA_ORDER: AreaKey[] = ['tecnologia', 'negocios', 'comunicacion', 'salud']
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -106,8 +54,9 @@ export default function Explorar() {
   const [name, setName] = useState('')
   const [open, setOpen] = useState(['', '', ''])
   const [qi, setQi] = useState(0)
-  const [answers, setAnswers] = useState<AreaKey[]>([])
+  const [answers, setAnswers] = useState<number[]>([])
   const [area, setArea] = useState<AreaKey | null>(null)
+  const [profileTop, setProfileTop] = useState<RiasecType[]>([])
   const [careersData, setCareersData] = useState<CareersResponse | null>(null)
   const [career, setCareer] = useState<CareerDetail | null>(null)
   const [showAllTestimonials, setShowAllTestimonials] = useState(false)
@@ -115,31 +64,70 @@ export default function Explorar() {
   const [useful, setUseful] = useState('')
   const [leaning, setLeaning] = useState('')
   const [loading, setLoading] = useState(false)
+  const [beforeFinal, setBeforeFinal] = useState<Step>('results')
 
   const go = (s: Step) => {
     setStep(s)
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (typeof window !== 'undefined') {
+      window.history.pushState({ step: s }, '')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }
+
+  const goFinal = (from: Step) => {
+    setBeforeFinal(from)
+    go('final')
+  }
+
+  // Semilla del historial: el paso inicial queda registrado para poder volver.
+  useEffect(() => {
+    window.history.replaceState({ step: 'landing' }, '')
+  }, [])
+
+  // Botones atrás/adelante del navegador (clave en celulares: el swipe-back
+  // no debe sacar al estudiante de la app perdiendo todo su progreso).
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const s = (e.state?.step ?? null) as Step | null
+      if (!s) return
+      // Pasos que dependen de datos en memoria: si faltan, caemos a un paso seguro.
+      if (s === 'career' && !career) return setStep(careersData ? 'gallery' : 'landing')
+      if (s === 'results' && (!area || !careersData)) return setStep('landing')
+      if ((s === 'gallery' || s === 'final') && !careersData) return setStep('landing')
+      setStep(s)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [career, careersData, area])
 
   // ── acciones ──
   async function startFromOpen() {
-    // crear sesión (no bloquea si falla la DB)
     try {
-      const res = await fetch('/api/explorer/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, preAnswers: { q1: open[0], q2: open[1], q3: open[2] } }),
-      })
-      if (res.ok) setSessionId((await res.json()).id)
+      if (sessionId) {
+        // Ya hay sesión (volvió para atrás y editó): actualizamos en vez de duplicar.
+        fetch('/api/explorer/session', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: sessionId, name, preAnswers: { q1: open[0], q2: open[1], q3: open[2] } }),
+        }).catch(() => {})
+      } else {
+        const res = await fetch('/api/explorer/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, preAnswers: { q1: open[0], q2: open[1], q3: open[2] } }),
+        })
+        if (res.ok) setSessionId((await res.json()).id)
+      }
     } catch { /* seguimos igual */ }
     setQi(0)
     setAnswers([])
     go('test')
   }
 
-  function answerTest(a: AreaKey) {
+  function answerTest(value: number) {
     const next = [...answers]
-    next[qi] = a
+    next[qi] = value
     setAnswers(next)
     if (qi < TEST.length - 1) {
       setQi(qi + 1)
@@ -148,34 +136,37 @@ export default function Explorar() {
     }
   }
 
-  async function finishTest(all: AreaKey[]) {
-    const score: Record<AreaKey, number> = { tecnologia: 0, negocios: 0, comunicacion: 0, salud: 0 }
-    all.forEach((a) => (score[a] += 1))
-    let top: AreaKey = 'negocios'
-    let max = -1
-    for (const k of AREA_ORDER) {
-      if (score[k] > max) { max = score[k]; top = k }
-    }
-    setArea(top)
-    await loadCareers()
-    // guardar resultado del test
+  async function finishTest(all: number[]) {
+    const p = computeProfile(all)
+    setArea(p.area)
+    setProfileTop(p.top)
+    const data = await loadCareers()
+    const suggested = data?.areas[p.area]?.careers ?? []
     if (sessionId) {
-      const suggested = careersData?.areas[top]?.careers ?? []
       fetch('/api/explorer/session', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sessionId, profileArea: top, suggestedCareers: suggested }),
+        body: JSON.stringify({
+          id: sessionId,
+          profileArea: p.area,
+          suggestedCareers: { careers: suggested, riasec: p.riasec, top: p.top },
+        }),
       }).catch(() => {})
     }
     go('results')
   }
 
-  async function loadCareers() {
-    if (careersData) return
+  async function loadCareers(): Promise<CareersResponse | null> {
+    if (careersData) return careersData
     try {
       const res = await fetch('/api/explorer/careers')
-      if (res.ok) setCareersData(await res.json())
+      if (res.ok) {
+        const d: CareersResponse = await res.json()
+        setCareersData(d)
+        return d
+      }
     } catch { /* noop */ }
+    return null
   }
 
   async function openCareer(key: string) {
@@ -217,13 +208,22 @@ export default function Explorar() {
 
         <div className="mt-6">
           {step === 'landing' && <Landing name={name} setName={setName} onStart={() => go('open')} onGallery={async () => { await loadCareers(); go('gallery') }} />}
-          {step === 'open' && <OpenQuestions open={open} setOpen={setOpen} onNext={startFromOpen} />}
+          {step === 'open' && <OpenQuestions open={open} setOpen={setOpen} onNext={startFromOpen} onBack={() => go('landing')} />}
           {step === 'test' && <TestView qi={qi} onAnswer={answerTest} onBack={() => (qi > 0 ? setQi(qi - 1) : go('open'))} />}
           {step === 'results' && area && careersData && (
-            <Results name={name} area={area} data={careersData} onPick={openCareer} onFinish={() => go('final')} loading={loading} />
+            <Results
+              name={name}
+              area={area}
+              profileTop={profileTop}
+              data={careersData}
+              onPick={openCareer}
+              onRetake={() => { setQi(0); setAnswers([]); go('test') }}
+              onFinish={() => goFinal('results')}
+              loading={loading}
+            />
           )}
           {step === 'gallery' && careersData && (
-            <Gallery data={careersData} onPick={openCareer} loading={loading} />
+            <Gallery data={careersData} onPick={openCareer} onBack={() => go('landing')} loading={loading} />
           )}
           {step === 'career' && career && (
             <CareerView
@@ -231,7 +231,7 @@ export default function Explorar() {
               showAll={showAllTestimonials}
               setShowAll={setShowAllTestimonials}
               onBack={() => go(area ? 'results' : 'gallery')}
-              onFinish={() => go('final')}
+              onFinish={() => goFinal('career')}
             />
           )}
           {step === 'final' && careersData && (
@@ -241,6 +241,7 @@ export default function Explorar() {
               setUseful={setUseful}
               leaning={leaning}
               setLeaning={setLeaning}
+              onBack={() => go(beforeFinal)}
               onSubmit={submitFinal}
             />
           )}
@@ -305,9 +306,10 @@ function Feature({ ic, t, d }: { ic: string; t: string; d: string }) {
   )
 }
 
-function OpenQuestions({ open, setOpen, onNext }: { open: string[]; setOpen: (v: string[]) => void; onNext: () => void }) {
+function OpenQuestions({ open, setOpen, onNext, onBack }: { open: string[]; setOpen: (v: string[]) => void; onNext: () => void; onBack: () => void }) {
   return (
     <div>
+      <button onClick={onBack} className="mb-4 text-sm font-semibold text-slate-500 hover:text-slate-800">← Volver al inicio</button>
       <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Antes de arrancar</p>
       <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Contanos por dónde venís</h2>
       <p className="mt-2 text-sm text-slate-500">No hay respuestas correctas. Podés saltear las que quieras.</p>
@@ -334,20 +336,21 @@ function OpenQuestions({ open, setOpen, onNext }: { open: string[]; setOpen: (v:
   )
 }
 
-function TestView({ qi, onAnswer, onBack }: { qi: number; onAnswer: (a: AreaKey) => void; onBack: () => void }) {
+function TestView({ qi, onAnswer, onBack }: { qi: number; onAnswer: (value: number) => void; onBack: () => void }) {
   const item = TEST[qi]
   return (
     <div>
-      <div className="text-sm font-semibold text-slate-400">Pregunta {qi + 1} de {TEST.length}</div>
+      <div className="text-sm font-semibold text-slate-400">{qi + 1} de {TEST.length}</div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-orange-400 transition-all duration-300" style={{ width: `${(qi / TEST.length) * 100}%` }} />
       </div>
-      <h2 className="mt-6 text-2xl font-extrabold tracking-tight text-slate-900">{item.q}</h2>
-      <div className="mt-5 grid gap-3">
-        {item.opts.map((o, i) => (
-          <button key={i} onClick={() => onAnswer(o.a)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left font-medium text-slate-700 transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md">
-            <span className="text-2xl">{o.em}</span>
-            <span>{o.t}</span>
+      <p className="mt-6 text-xs font-bold uppercase tracking-widest text-slate-400">¿Qué tanto te copa?</p>
+      <h2 className="mt-2 text-2xl font-extrabold leading-snug tracking-tight text-slate-900">{item.activity}</h2>
+      <div className="mt-6 grid gap-3">
+        {SCALE.map((s) => (
+          <button key={s.value} onClick={() => onAnswer(s.value)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md">
+            <span className="text-2xl">{s.emoji}</span>
+            <span>{s.label}</span>
           </button>
         ))}
       </div>
@@ -377,20 +380,39 @@ function CareerCard({ c, featured, onPick }: { c: CareerListItem; featured?: boo
   )
 }
 
-function Results({ name, area, data, onPick, onFinish, loading }: { name: string; area: AreaKey; data: CareersResponse; onPick: (k: string) => void; onFinish: () => void; loading: boolean }) {
+function Results({ name, area, profileTop, data, onPick, onRetake, onFinish, loading }: { name: string; area: AreaKey; profileTop: RiasecType[]; data: CareersResponse; onPick: (k: string) => void; onRetake: () => void; onFinish: () => void; loading: boolean }) {
   const areaInfo = data.areas[area]
   const featuredKeys = areaInfo?.careers ?? []
   const featured = data.careers.filter((c) => featuredKeys.includes(c.key))
   const rest = data.careers.filter((c) => !featuredKeys.includes(c.key))
   return (
     <div>
+      <button onClick={onRetake} className="mb-4 text-sm font-semibold text-slate-500 hover:text-slate-800">← Rehacer el test</button>
       <p className="text-center text-sm font-bold uppercase tracking-widest text-slate-400">
-        {name ? `${name}, tu área sugerida es` : 'Tu área sugerida es'}
+        {name ? `${name}, tu perfil da para` : 'Tu perfil da para'}
       </p>
       <h2 className="mt-3 flex items-center justify-center gap-3 text-center text-3xl font-extrabold tracking-tight text-slate-900">
         <span className="text-4xl">{areaInfo?.emoji}</span> {areaInfo?.name}
       </h2>
-      <p className="mx-auto mt-4 max-w-md rounded-2xl bg-violet-50 p-4 text-center text-sm text-slate-600 ring-1 ring-violet-100">
+
+      {profileTop.length > 0 && (
+        <div className="mt-5">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-slate-400">Tu perfil de intereses</p>
+          <div className="mt-3 grid gap-2">
+            {profileTop.map((t) => (
+              <div key={t} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                <span className="text-2xl">{RIASEC_LABELS[t].emoji}</span>
+                <div>
+                  <p className="font-bold text-slate-800">{RIASEC_LABELS[t].name}</p>
+                  <p className="text-sm text-slate-500">{RIASEC_LABELS[t].blurb}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="mx-auto mt-5 max-w-md rounded-2xl bg-violet-50 p-4 text-center text-sm text-slate-600 ring-1 ring-violet-100">
         Es una <b>sugerencia para arrancar a explorar</b>, no un destino escrito en piedra. Metete, escuchá a los que ya están adentro y decidí vos.
       </p>
 
@@ -413,9 +435,10 @@ function Results({ name, area, data, onPick, onFinish, loading }: { name: string
   )
 }
 
-function Gallery({ data, onPick, loading }: { data: CareersResponse; onPick: (k: string) => void; loading: boolean }) {
+function Gallery({ data, onPick, onBack, loading }: { data: CareersResponse; onPick: (k: string) => void; onBack: () => void; loading: boolean }) {
   return (
     <div>
+      <button onClick={onBack} className="mb-4 text-sm font-semibold text-slate-500 hover:text-slate-800">← Volver al inicio</button>
       <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Carreras disponibles</h2>
       <p className="mt-1 text-sm text-slate-500">Elegí una para leer lo que cuentan los estudiantes reales.</p>
       {loading && <p className="mt-6 text-center text-sm text-slate-400">Cargando…</p>}
@@ -467,17 +490,7 @@ function CareerView({ c, showAll, setShowAll, onBack, onFinish }: { c: CareerDet
           <h3 className="mt-8 text-xs font-bold uppercase tracking-widest text-slate-400">En sus propias palabras</h3>
           <div className="mt-3 space-y-3">
             {visible.map((t, i) => (
-              <div key={i} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                <p className="text-xs font-semibold text-violet-500">Estudiante de {c.name} · {t.stage}</p>
-                <div className="mt-2 space-y-2.5">
-                  {t.items.slice(0, 3).map((it, j) => (
-                    <div key={j}>
-                      {it.label && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{it.label}</p>}
-                      <p className="text-sm leading-relaxed text-slate-600">“{it.a}”</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <TestimonialCard key={i} t={t} careerName={c.name} />
             ))}
           </div>
           {!showAll && c.testimonials.length > 5 && (
@@ -488,24 +501,62 @@ function CareerView({ c, showAll, setShowAll, onBack, onFinish }: { c: CareerDet
         </>
       )}
 
-      <button onClick={onFinish} className="mt-8 w-full rounded-full bg-violet-600 px-8 py-4 font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700">
-        Terminar y darnos tu opinión
-      </button>
+      <div className="mt-8 grid gap-3">
+        <button onClick={onBack} className="w-full rounded-full border border-slate-200 bg-white px-8 py-3.5 font-bold text-slate-600 transition hover:bg-slate-50">
+          ← Explorar otras carreras
+        </button>
+        <button onClick={onFinish} className="w-full rounded-full bg-violet-600 px-8 py-4 font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700">
+          Terminar y darnos tu opinión
+        </button>
+      </div>
     </div>
   )
 }
 
-function FinalSurvey({ careers, useful, setUseful, leaning, setLeaning, onSubmit }: {
+function TestimonialCard({ t, careerName }: { t: Testimonial; careerName: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const items = expanded ? t.items : t.items.slice(0, 3)
+  const hidden = t.items.length - 3
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold text-violet-500">Estudiante de {careerName} · {t.stage}</p>
+      <div className="mt-2 space-y-2.5">
+        {items.map((it, j) =>
+          it.k === 'b5_q1' ? (
+            <div key={j} className="rounded-xl bg-orange-50 p-3 ring-1 ring-orange-100">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-orange-600">🎤 Su recomendación</p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-slate-700">“{it.a}”</p>
+            </div>
+          ) : (
+            <div key={j}>
+              {it.label && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{it.label}</p>}
+              <p className="text-sm leading-relaxed text-slate-600">“{it.a}”</p>
+            </div>
+          )
+        )}
+      </div>
+      {hidden > 0 && (
+        <button onClick={() => setExpanded(!expanded)} className="mt-3 text-sm font-bold text-violet-600 hover:text-violet-800">
+          {expanded ? 'Ver menos' : `Leer el testimonio completo (${hidden} ${hidden === 1 ? 'respuesta' : 'respuestas'} más)`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function FinalSurvey({ careers, useful, setUseful, leaning, setLeaning, onBack, onSubmit }: {
   careers: CareerListItem[]
   useful: string; setUseful: (v: string) => void
   leaning: string; setLeaning: (v: string) => void
+  onBack: () => void
   onSubmit: () => void
 }) {
   const usefulOpts = ['¡Sí, un montón!', 'Más o menos', 'La verdad que no']
   return (
     <div>
+      <button onClick={onBack} className="mb-4 text-sm font-semibold text-slate-500 hover:text-slate-800">← Quiero seguir explorando</button>
       <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Una última cosa 🙌</h2>
-      <p className="mt-2 text-sm text-slate-500">Tu respuesta nos ayuda a mejorar. Son 10 segundos.</p>
+      <p className="mt-2 text-sm text-slate-500">Tu respuesta nos ayuda a mejorar. Son 10 segundos. Si querés, después podés volver a mirar más testimonios.</p>
 
       <div className="mt-6">
         <p className="text-[15px] font-semibold text-slate-700">¿Te sirvió la información que te mostramos?</p>

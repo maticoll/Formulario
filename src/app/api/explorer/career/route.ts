@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
         stage: r.stage,
         items: TESTIMONIAL_QUESTION_KEYS
           .filter((qk) => r.answers[qk] && r.answers[qk].length > 8)
-          .map((qk) => ({ label: SURVEY_QUESTION_LABELS[qk] || '', a: r.answers[qk] })),
+          .map((qk) => ({ k: qk, label: SURVEY_QUESTION_LABELS[qk] || '', a: r.answers[qk] })),
       }))
       .filter((t) => t.items.length > 0)
 
