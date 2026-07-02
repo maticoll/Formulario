@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import { DIGEST_QUESTIONS } from '@/lib/digests'
 import { TEST, SCALE, RIASEC_LABELS, computeProfile, type RiasecType } from '@/lib/riasec'
 
@@ -336,10 +337,16 @@ export default function Explorar() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-violet-50 to-white text-slate-800">
       <div className="mx-auto w-full max-w-xl px-5 py-6 pb-24">
-        <button onClick={() => go('landing')} className="flex items-center gap-2 font-extrabold tracking-tight text-slate-900">
-          <span className="h-3 w-3 rounded-full bg-orange-400 ring-4 ring-orange-100" />
-          Rumbo
-          <span className="ml-1 text-xs font-medium text-slate-400">lo que ningún folleto te cuenta</span>
+        <button onClick={() => go('landing')} className="flex items-center gap-2.5">
+          <Image
+            src="/logo.png"
+            alt="Rumbo"
+            width={1054}
+            height={355}
+            priority
+            className="h-10 w-auto rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-slate-100"
+          />
+          <span className="text-xs font-medium text-slate-400">lo que ningún folleto te cuenta</span>
         </button>
 
         <div className="mt-6">
