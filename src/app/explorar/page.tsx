@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DIGEST_QUESTIONS } from '@/lib/digests'
 import { TEST, SCALE, RIASEC_LABELS, computeProfile, type RiasecType } from '@/lib/riasec'
 
@@ -48,6 +48,16 @@ function shuffle<T>(arr: T[]): T[] {
 
 type Step = 'landing' | 'open' | 'test' | 'results' | 'gallery' | 'career' | 'final' | 'done'
 
+// Evento de tiempo en pantalla (se persiste en screen_events).
+type TrackEvent = {
+  sessionId?: string
+  step: Step
+  careerKey: string | null
+  enteredAt: string
+  durationMs: number
+  meta?: Record<string, unknown>
+}
+
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function Explorar() {
   const [step, setStep] = useState<Step>('landing')
@@ -60,7 +70,6 @@ export default function Explorar() {
   const [careersData, setCareersData] = useState<CareersResponse | null>(null)
   const [career, setCareer] = useState<CareerDetail | null>(null)
   const [showAllTestimonials, setShowAllTestimonials] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
   const [useful, setUseful] = useState('')
   const [leaning, setLeaning] = useState('')
   const [loading, setLoading] = useState(false)
@@ -78,6 +87,136 @@ export default function Explorar() {
     setBeforeFinal(from)
     go('final')
   }
+
+  // ── sesión (creada al salir de la landing, por cualquiera de los dos caminos) ──
+  const sessionIdRef = useRef<string | null>(null)
+  const sessionPromiseRef = useRef<Promise<string | null> | null>(null)
+
+  function ensureSession(): Promise<string | null> {
+    if (sessionIdRef.current) return Promise.resolve(sessionIdRef.current)
+    if (!sessionPromiseRef.current) {
+      sessionPromiseRef.current = (async () => {
+        try {
+          const res = await fetch('/api/explorer/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          })
+          if (res.ok) {
+            const d = await res.json()
+            sessionIdRef.current = d.id
+            return d.id as string
+          }
+        } catch { /* seguimos sin sesión: la app funciona igual */ }
+        sessionPromiseRef.current = null
+        return null
+      })()
+    }
+    return sessionPromiseRef.current
+  }
+
+  // ── métricas de tiempo por pantalla ──
+  // Cronómetro de la pantalla actual. Se pausa cuando la pestaña queda oculta
+  // (celular en segundo plano) para no inflar los tiempos.
+  const screenRef = useRef<{
+    step: Step
+    careerKey: string | null
+    enteredAt: number
+    hiddenSince: number | null
+    hiddenMs: number
+    meta: Record<string, unknown>
+  }>({ step: 'landing', careerKey: null, enteredAt: Date.now(), hiddenSince: null, hiddenMs: 0, meta: {} })
+  // Eventos ocurridos antes de tener sessionId (ej: tiempo en la landing).
+  const pendingEventsRef = useRef<TrackEvent[]>([])
+
+  const sendEvents = (events: TrackEvent[], useBeacon = false) => {
+    if (events.length === 0) return
+    const payload = JSON.stringify(events)
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/explorer/track', new Blob([payload], { type: 'application/json' }))
+    } else {
+      fetch('/api/explorer/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {})
+    }
+  }
+
+  const closeScreen = (useBeacon = false) => {
+    const s = screenRef.current
+    const now = Date.now()
+    const hidden = s.hiddenMs + (s.hiddenSince ? now - s.hiddenSince : 0)
+    const ev: TrackEvent = {
+      step: s.step,
+      careerKey: s.careerKey,
+      enteredAt: new Date(s.enteredAt).toISOString(),
+      durationMs: Math.max(0, now - s.enteredAt - hidden),
+      meta: Object.keys(s.meta).length ? s.meta : undefined,
+    }
+    const sid = sessionIdRef.current
+    if (sid) {
+      const buffered = pendingEventsRef.current.splice(0)
+      sendEvents([...buffered, ev].map((e) => ({ ...e, sessionId: sid })), useBeacon)
+    } else {
+      pendingEventsRef.current.push(ev)
+    }
+  }
+
+  const openScreen = (s: Step, careerKey: string | null) => {
+    screenRef.current = {
+      step: s,
+      careerKey,
+      enteredAt: Date.now(),
+      hiddenSince: typeof document !== 'undefined' && document.visibilityState === 'hidden' ? Date.now() : null,
+      hiddenMs: 0,
+      meta: {},
+    }
+  }
+
+  // Interacciones dentro de la pantalla actual (van en el meta del evento).
+  const noteMeta = (k: 'expand' | 'showAll') => {
+    const m = screenRef.current.meta
+    if (k === 'expand') m.expanded = ((m.expanded as number) || 0) + 1
+    if (k === 'showAll') m.showAll = true
+  }
+
+  // Cambio de pantalla → cerramos el evento anterior y abrimos el nuevo.
+  const trackedRef = useRef<{ step: Step; careerKey: string | null }>({ step: 'landing', careerKey: null })
+  useEffect(() => {
+    const currentCareer = step === 'career' ? (career?.key ?? null) : null
+    if (trackedRef.current.step === step && trackedRef.current.careerKey === currentCareer) return
+    closeScreen()
+    openScreen(step, currentCareer)
+    trackedRef.current = { step, careerKey: currentCareer }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, career])
+
+  // Pausa por pestaña oculta + último evento al cerrar/abandonar la página.
+  useEffect(() => {
+    const onVisibility = () => {
+      const s = screenRef.current
+      if (document.visibilityState === 'hidden') {
+        s.hiddenSince = Date.now()
+      } else if (s.hiddenSince) {
+        s.hiddenMs += Date.now() - s.hiddenSince
+        s.hiddenSince = null
+      }
+    }
+    const onPageHide = () => {
+      closeScreen(true)
+      // Si vuelve (bfcache), arranca una visita nueva a la misma pantalla.
+      openScreen(screenRef.current.step, screenRef.current.careerKey)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onPageHide)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Semilla del historial: el paso inicial queda registrado para poder volver.
   useEffect(() => {
@@ -103,23 +242,14 @@ export default function Explorar() {
 
   // ── acciones ──
   async function startFromOpen() {
-    try {
-      if (sessionId) {
-        // Ya hay sesión (volvió para atrás y editó): actualizamos en vez de duplicar.
-        fetch('/api/explorer/session', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: sessionId, name, preAnswers: { q1: open[0], q2: open[1], q3: open[2] } }),
-        }).catch(() => {})
-      } else {
-        const res = await fetch('/api/explorer/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, preAnswers: { q1: open[0], q2: open[1], q3: open[2] } }),
-        })
-        if (res.ok) setSessionId((await res.json()).id)
-      }
-    } catch { /* seguimos igual */ }
+    const sid = await ensureSession()
+    if (sid) {
+      fetch('/api/explorer/session', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sid, name, preAnswers: { q1: open[0], q2: open[1], q3: open[2] } }),
+      }).catch(() => {})
+    }
     setQi(0)
     setAnswers([])
     go('test')
@@ -142,12 +272,13 @@ export default function Explorar() {
     setProfileTop(p.top)
     const data = await loadCareers()
     const suggested = data?.areas[p.area]?.careers ?? []
-    if (sessionId) {
+    const sid = sessionIdRef.current
+    if (sid) {
       fetch('/api/explorer/session', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: sessionId,
+          id: sid,
           profileArea: p.area,
           suggestedCareers: { careers: suggested, riasec: p.riasec, top: p.top },
         }),
@@ -159,7 +290,10 @@ export default function Explorar() {
   async function loadCareers(): Promise<CareersResponse | null> {
     if (careersData) return careersData
     try {
-      const res = await fetch('/api/explorer/careers')
+      // La sesión define el grupo del experimento: los conteos de testimonios
+      // que devuelven las tarjetas dependen de ella.
+      const sid = await ensureSession()
+      const res = await fetch(`/api/explorer/careers${sid ? `?session=${sid}` : ''}`)
       if (res.ok) {
         const d: CareersResponse = await res.json()
         setCareersData(d)
@@ -173,7 +307,8 @@ export default function Explorar() {
     setLoading(true)
     setShowAllTestimonials(false)
     try {
-      const res = await fetch(`/api/explorer/career?key=${key}`)
+      const sid = await ensureSession()
+      const res = await fetch(`/api/explorer/career?key=${key}${sid ? `&session=${sid}` : ''}`)
       if (res.ok) {
         const data: CareerDetail = await res.json()
         data.testimonials = shuffle(data.testimonials)
@@ -186,11 +321,12 @@ export default function Explorar() {
   }
 
   async function submitFinal() {
-    if (sessionId) {
+    const sid = sessionIdRef.current
+    if (sid) {
       fetch('/api/explorer/session', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sessionId, usefulRating: useful, leaning }),
+        body: JSON.stringify({ id: sid, usefulRating: useful, leaning }),
       }).catch(() => {})
     }
     go('done')
@@ -207,7 +343,7 @@ export default function Explorar() {
         </button>
 
         <div className="mt-6">
-          {step === 'landing' && <Landing name={name} setName={setName} onStart={() => go('open')} onGallery={async () => { await loadCareers(); go('gallery') }} />}
+          {step === 'landing' && <Landing name={name} setName={setName} onStart={() => { ensureSession(); go('open') }} onGallery={async () => { await loadCareers(); go('gallery') }} />}
           {step === 'open' && <OpenQuestions open={open} setOpen={setOpen} onNext={startFromOpen} onBack={() => go('landing')} />}
           {step === 'test' && <TestView qi={qi} onAnswer={answerTest} onBack={() => (qi > 0 ? setQi(qi - 1) : go('open'))} />}
           {step === 'results' && area && careersData && (
@@ -229,7 +365,8 @@ export default function Explorar() {
             <CareerView
               c={career}
               showAll={showAllTestimonials}
-              setShowAll={setShowAllTestimonials}
+              setShowAll={(v) => { if (v) noteMeta('showAll'); setShowAllTestimonials(v) }}
+              onExpandTestimonial={() => noteMeta('expand')}
               onBack={() => go(area ? 'results' : 'gallery')}
               onFinish={() => goFinal('career')}
             />
@@ -449,7 +586,7 @@ function Gallery({ data, onPick, onBack, loading }: { data: CareersResponse; onP
   )
 }
 
-function CareerView({ c, showAll, setShowAll, onBack, onFinish }: { c: CareerDetail; showAll: boolean; setShowAll: (v: boolean) => void; onBack: () => void; onFinish: () => void }) {
+function CareerView({ c, showAll, setShowAll, onExpandTestimonial, onBack, onFinish }: { c: CareerDetail; showAll: boolean; setShowAll: (v: boolean) => void; onExpandTestimonial: () => void; onBack: () => void; onFinish: () => void }) {
   const visible = showAll ? c.testimonials : c.testimonials.slice(0, 5)
   return (
     <div>
@@ -490,7 +627,7 @@ function CareerView({ c, showAll, setShowAll, onBack, onFinish }: { c: CareerDet
           <h3 className="mt-8 text-xs font-bold uppercase tracking-widest text-slate-400">En sus propias palabras</h3>
           <div className="mt-3 space-y-3">
             {visible.map((t, i) => (
-              <TestimonialCard key={i} t={t} careerName={c.name} />
+              <TestimonialCard key={i} t={t} careerName={c.name} onExpand={onExpandTestimonial} />
             ))}
           </div>
           {!showAll && c.testimonials.length > 5 && (
@@ -513,8 +650,12 @@ function CareerView({ c, showAll, setShowAll, onBack, onFinish }: { c: CareerDet
   )
 }
 
-function TestimonialCard({ t, careerName }: { t: Testimonial; careerName: string }) {
+function TestimonialCard({ t, careerName, onExpand }: { t: Testimonial; careerName: string; onExpand: () => void }) {
   const [expanded, setExpanded] = useState(false)
+  const toggle = () => {
+    if (!expanded) onExpand()
+    setExpanded(!expanded)
+  }
   const items = expanded ? t.items : t.items.slice(0, 3)
   const hidden = t.items.length - 3
   return (
@@ -536,7 +677,7 @@ function TestimonialCard({ t, careerName }: { t: Testimonial; careerName: string
         )}
       </div>
       {hidden > 0 && (
-        <button onClick={() => setExpanded(!expanded)} className="mt-3 text-sm font-bold text-violet-600 hover:text-violet-800">
+        <button onClick={toggle} className="mt-3 text-sm font-bold text-violet-600 hover:text-violet-800">
           {expanded ? 'Ver menos' : `Leer el testimonio completo (${hidden} ${hidden === 1 ? 'respuesta' : 'respuestas'} más)`}
         </button>
       )}

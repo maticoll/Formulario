@@ -1,22 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { createDb } from '@/db'
-import { respondents, responses, careerSummaries } from '@/db/schema'
+import { respondents, responses, careerSummaries, explorerSessions } from '@/db/schema'
 import { CAREERS, normalizeCareer, type CareerKey } from '@/lib/careers'
 import { DIGESTS, TESTIMONIAL_QUESTION_KEYS, SURVEY_QUESTION_LABELS } from '@/lib/digests'
+import { pickDeterministicSubset, reducedCount } from '@/lib/experiment'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/explorer/career?key=admin
+// GET /api/explorer/career?key=admin&session=<id>
 // Detalle de una carrera: resumen (IA cacheada o fallback) + testimonios anonimizados.
+// Si la sesión pertenece al grupo 'reduced' del experimento, devuelve solo el 25%
+// de los testimonios (subconjunto determinístico por sesión). El resumen va
+// completo para ambos grupos.
 export async function GET(req: NextRequest) {
   try {
     const key = req.nextUrl.searchParams.get('key') as CareerKey | null
     if (!key || !CAREERS[key]) {
       return NextResponse.json({ error: 'Carrera no válida' }, { status: 400 })
     }
+    const sessionId = req.nextUrl.searchParams.get('session')
 
     const db = createDb()
+
+    // Variante del experimento (default 'full' si no hay sesión o falla el lookup).
+    let variant: string | null = null
+    if (sessionId) {
+      try {
+        const [s] = await db
+          .select({ variant: explorerSessions.variant })
+          .from(explorerSessions)
+          .where(eq(explorerSessions.id, sessionId))
+        variant = s?.variant ?? null
+      } catch { /* seguimos como 'full' */ }
+    }
 
     // Resumen: primero la caché de IA; si no hay, el fallback pre-generado.
     let summary: unknown = DIGESTS[key]
@@ -52,8 +69,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Anonimizado: solo etapa (año) + respuestas. Nunca el nombre.
-    const testimonials = Array.from(byResp.values())
-      .map((r) => ({
+    // Orden estable por id de respondent: requisito para que el subconjunto
+    // del grupo 'reduced' sea siempre el mismo dentro de una sesión.
+    let testimonials = Array.from(byResp.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, r]) => ({
         stage: r.stage,
         items: TESTIMONIAL_QUESTION_KEYS
           .filter((qk) => r.answers[qk] && r.answers[qk].length > 8)
@@ -61,12 +81,21 @@ export async function GET(req: NextRequest) {
       }))
       .filter((t) => t.items.length > 0)
 
+    if (variant === 'reduced' && sessionId) {
+      testimonials = pickDeterministicSubset(
+        testimonials,
+        reducedCount(testimonials.length),
+        `${sessionId}:${key}`
+      )
+    }
+
     return NextResponse.json({
       key,
       name: CAREERS[key].name,
       emoji: CAREERS[key].emoji,
       area: CAREERS[key].area,
-      count: byResp.size,
+      // El conteo refleja lo que este usuario realmente ve.
+      count: testimonials.length,
       summary,
       summarySource,
       testimonials,

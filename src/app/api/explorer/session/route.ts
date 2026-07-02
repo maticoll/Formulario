@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { createDb } from '@/db'
 import { explorerSessions } from '@/db/schema'
+import { assignVariant } from '@/lib/experiment'
 
 export const dynamic = 'force-dynamic'
 
-// POST /api/explorer/session  → crea la sesión con el nombre y las preguntas abiertas.
+// POST /api/explorer/session  → crea la sesión, asigna el grupo del experimento
+// (50/50 aleatorio, fijo para toda la sesión) y devuelve id + variant.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -14,10 +16,11 @@ export async function POST(req: NextRequest) {
       .insert(explorerSessions)
       .values({
         name: typeof body.name === 'string' && body.name.trim() ? body.name.trim() : null,
+        variant: assignVariant(),
         preAnswers: body.preAnswers ?? null,
       })
-      .returning({ id: explorerSessions.id })
-    return NextResponse.json({ id: row.id })
+      .returning({ id: explorerSessions.id, variant: explorerSessions.variant })
+    return NextResponse.json({ id: row.id, variant: row.variant })
   } catch (e) {
     console.error('[explorer/session POST]', e)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })

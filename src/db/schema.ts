@@ -25,6 +25,9 @@ export const responses = pgTable('responses', {
 export const explorerSessions = pgTable('explorer_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name'),
+  // Grupo del experimento A/B: 'full' (100% de testimonios) | 'reduced' (25%).
+  // Null = sesión anterior al experimento (excluir del análisis).
+  variant: text('variant'),
   preAnswers: jsonb('pre_answers'),
   profileArea: text('profile_area'),
   suggestedCareers: jsonb('suggested_careers'),
@@ -32,6 +35,21 @@ export const explorerSessions = pgTable('explorer_sessions', {
   leaning: text('leaning'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Una fila por visita a una pantalla del explorador (permite medir tiempos,
+// revisitas y el orden de navegación de cada sesión).
+export const screenEvents = pgTable('screen_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id')
+    .notNull()
+    .references(() => explorerSessions.id),
+  step: text('step').notNull(),
+  careerKey: text('career_key'),
+  enteredAt: timestamp('entered_at').notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  meta: jsonb('meta'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
 export const careerSummaries = pgTable('career_summaries', {
@@ -46,3 +64,4 @@ export type Respondent = typeof respondents.$inferSelect
 export type Response = typeof responses.$inferSelect
 export type ExplorerSession = typeof explorerSessions.$inferSelect
 export type CareerSummary = typeof careerSummaries.$inferSelect
+export type ScreenEvent = typeof screenEvents.$inferSelect
