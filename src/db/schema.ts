@@ -33,6 +33,9 @@ export const explorerSessions = pgTable('explorer_sessions', {
   suggestedCareers: jsonb('suggested_careers'),
   usefulRating: text('useful_rating'),
   leaning: text('leaning'),
+  // Recomendación generada por IA: { careers, text, area, model, generatedAt }.
+  // Cacheada por sesión; se regenera solo si cambia el área del perfil.
+  aiRecommendation: jsonb('ai_recommendation'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

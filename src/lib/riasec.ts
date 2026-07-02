@@ -41,9 +41,12 @@ export const TEST: TestItem[] = [
   { activity: 'Pasar la tarde arreglando o construyendo algo con herramientas.', type: 'R' },
 ]
 
+// Likert forzada de 4 puntos: sin opción neutra, cada respuesta inclina
+// hacia un "sí" o un "no".
 export const SCALE: { label: string; emoji: string; value: number }[] = [
-  { label: '¡Me copa!', emoji: '😍', value: 2 },
-  { label: 'Más o menos', emoji: '😐', value: 1 },
+  { label: '¡Me copa!', emoji: '😍', value: 3 },
+  { label: 'Me gusta', emoji: '🙂', value: 2 },
+  { label: 'No mucho', emoji: '😕', value: 1 },
   { label: 'Nah', emoji: '🙅', value: 0 },
 ]
 
@@ -56,7 +59,7 @@ export type Profile = {
 
 const AREA_ORDER: AreaKey[] = ['tecnologia', 'negocios', 'comunicacion', 'salud']
 
-// Convierte los puntajes por ítem (0-2) en un perfil RIASEC + área sugerida.
+// Convierte los puntajes por ítem (0-3) en un perfil RIASEC + área sugerida.
 export function computeProfile(scores: number[]): Profile {
   const riasec: Record<RiasecType, number> = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 }
   TEST.forEach((item, i) => {

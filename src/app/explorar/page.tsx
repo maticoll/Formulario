@@ -30,6 +30,7 @@ type CareerDetail = {
   summary: Block[]
   testimonials: Testimonial[]
 }
+type AiRec = { careers: string[]; text: string }
 
 // ─── Preguntas abiertas iniciales ────────────────────────────────────────────
 const OPEN_QUESTIONS = [
@@ -74,6 +75,9 @@ export default function Explorar() {
   const [useful, setUseful] = useState('')
   const [leaning, setLeaning] = useState('')
   const [loading, setLoading] = useState(false)
+  // Recomendación IA (complementa al test; si falla, la tarjeta no se muestra).
+  const [aiRec, setAiRec] = useState<AiRec | null>(null)
+  const [aiRecLoading, setAiRecLoading] = useState(false)
   const [beforeFinal, setBeforeFinal] = useState<Step>('results')
 
   const go = (s: Step) => {
@@ -267,10 +271,37 @@ export default function Explorar() {
     }
   }
 
+  // Pide la recomendación IA en paralelo: la pantalla de resultados no espera.
+  async function fetchAiRec(profile: ReturnType<typeof computeProfile>) {
+    setAiRec(null)
+    setAiRecLoading(true)
+    try {
+      const sid = await ensureSession()
+      if (!sid) return
+      const res = await fetch('/api/explorer/recommendation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sid,
+          profile: { riasec: profile.riasec, top: profile.top, area: profile.area },
+        }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        if (Array.isArray(d.careers) && d.careers.length && d.text) {
+          setAiRec({ careers: d.careers, text: d.text })
+        }
+      }
+    } catch { /* sin recomendación: la tarjeta no se muestra */ } finally {
+      setAiRecLoading(false)
+    }
+  }
+
   async function finishTest(all: number[]) {
     const p = computeProfile(all)
     setArea(p.area)
     setProfileTop(p.top)
+    fetchAiRec(p)
     const data = await loadCareers()
     const suggested = data?.areas[p.area]?.careers ?? []
     const sid = sessionIdRef.current
@@ -359,6 +390,8 @@ export default function Explorar() {
               area={area}
               profileTop={profileTop}
               data={careersData}
+              aiRec={aiRec}
+              aiRecLoading={aiRecLoading}
               onPick={openCareer}
               onRetake={() => { setQi(0); setAnswers([]); go('test') }}
               onFinish={() => goFinal('results')}
@@ -524,7 +557,7 @@ function CareerCard({ c, featured, onPick }: { c: CareerListItem; featured?: boo
   )
 }
 
-function Results({ name, area, profileTop, data, onPick, onRetake, onFinish, loading }: { name: string; area: AreaKey; profileTop: RiasecType[]; data: CareersResponse; onPick: (k: string) => void; onRetake: () => void; onFinish: () => void; loading: boolean }) {
+function Results({ name, area, profileTop, data, aiRec, aiRecLoading, onPick, onRetake, onFinish, loading }: { name: string; area: AreaKey; profileTop: RiasecType[]; data: CareersResponse; aiRec: AiRec | null; aiRecLoading: boolean; onPick: (k: string) => void; onRetake: () => void; onFinish: () => void; loading: boolean }) {
   const areaInfo = data.areas[area]
   const featuredKeys = areaInfo?.careers ?? []
   const featured = data.careers.filter((c) => featuredKeys.includes(c.key))
@@ -559,6 +592,32 @@ function Results({ name, area, profileTop, data, onPick, onRetake, onFinish, loa
       <p className="mx-auto mt-5 max-w-md rounded-2xl bg-violet-50 p-4 text-center text-sm text-slate-600 ring-1 ring-violet-100">
         Es una <b>sugerencia para arrancar a explorar</b>, no un destino escrito en piedra. Metete, escuchá a los que ya están adentro y decidí vos.
       </p>
+
+      {/* Recomendación personalizada con IA (si falla o no hay key, no aparece) */}
+      {aiRecLoading && (
+        <div className="mt-5 animate-pulse rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="h-3 w-48 rounded bg-slate-100" />
+          <div className="mt-3 h-3 w-full rounded bg-slate-100" />
+          <div className="mt-2 h-3 w-2/3 rounded bg-slate-100" />
+        </div>
+      )}
+      {aiRec && (
+        <div className="mt-5 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-orange-50 p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-violet-500">🤖 Recomendación personalizada</p>
+          <p className="mt-2 text-[15px] leading-relaxed text-slate-700">{aiRec.text}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {aiRec.careers.map((k) => {
+              const c = data.careers.find((x) => x.key === k)
+              if (!c) return null
+              return (
+                <button key={k} onClick={() => onPick(k)} className="inline-flex items-center gap-1.5 rounded-full border border-violet-300 bg-white px-3.5 py-1.5 text-sm font-bold text-violet-700 transition hover:bg-violet-50">
+                  {c.emoji} {c.name} →
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {loading && <p className="mt-6 text-center text-sm text-slate-400">Cargando…</p>}
 
@@ -748,6 +807,12 @@ function Done({ name }: { name: string }) {
       <p className="mx-auto mt-3 max-w-sm text-slate-600">
         Ojalá te haya servido para ver tus opciones con un poco más de claridad. El próximo paso: hablá con alguien que estudie lo que te copó. 💜
       </p>
+      <div className="mx-auto mt-8 max-w-sm rounded-2xl border border-slate-100 bg-slate-50 p-4 text-left">
+        <p className="text-sm font-bold text-slate-700">🧪 Tranqui: esto no define tu vida.</p>
+        <p className="mt-1 text-sm leading-relaxed text-slate-500">
+          Este test es una brújula para explorar, no un veredicto. Lo armamos para validar una hipótesis de un proyecto de la facultad — la decisión sigue siendo 100% tuya.
+        </p>
+      </div>
     </div>
   )
 }
